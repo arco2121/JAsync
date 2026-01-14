@@ -1,11 +1,12 @@
 package com.arco2121.jasync.AsyncTypes;
 
-import com.arco2121.jasync.AsyncUtility.MissingAsyncException;
-import com.arco2121.jasync.AsyncUtility.AsyncInterface;
+import com.arco2121.jasync.Async.AsyncT;
+import com.arco2121.jasync.Async.MissingAsyncException;
+import com.arco2121.jasync.Async.AsyncInterface;
 
 import java.util.concurrent.*;
 
-public class VirtualAsync implements AsyncInterface {
+public final class VirtualAsync implements AsyncInterface {
     private static final ExecutorService EXEC;
     static {
         ExecutorService tmp;
@@ -20,11 +21,11 @@ public class VirtualAsync implements AsyncInterface {
     }
 
     @Override
-    public <T> Future<T> async(Callable<T> task) {
-        return EXEC.submit(task);
+    public <T> AsyncT<T> async(Callable<T> task) {
+        return (AsyncT<T>) EXEC.submit(task);
     }
     @Override
-    public <T> T await(Future<T> future) {
+    public <T> T await(AsyncT<T> future) {
         try {
             return future.get(); // cheap block
         } catch (InterruptedException e) {
@@ -32,6 +33,20 @@ public class VirtualAsync implements AsyncInterface {
             throw new RuntimeException(e);
         } catch (ExecutionException e) {
             throw new RuntimeException(e.getCause());
+        }
+    }
+    @Override
+    public <T> T await(AsyncT<T> task, int timeout) {
+        try {
+            return task.get(timeout, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException(e);
+        } catch (ExecutionException e) {
+            throw new RuntimeException(e.getCause());
+        } catch (TimeoutException e) {
+            System.err.println("Timeout task: " + e.getMessage());
+            return null;
         }
     }
 }
