@@ -1,4 +1,4 @@
-package com.arco2121.jasync.Async;
+package com.arco2121.jasync.AsyncTypes;
 
 public class MissingAsyncException extends RuntimeException {
     public MissingAsyncException(String message) {

@@ -1,16 +1,17 @@
-package com.arco2121.jasync.Async;
+package com.arco2121.jasync.JAsync;
+
+import com.arco2121.jasync.AsyncTypes.MissingAsyncException;
 
 import java.util.concurrent.*;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
-public final class AsyncT<T> extends CompletableFuture<T> implements Future<T>, Callable<T>, Runnable {
+public record Asyncable<T>(CompletableFuture<T> delegate) implements Future<T>, Callable<T>, Runnable {
 
-    private final CompletableFuture<T> delegate;
-
-    public AsyncT(CompletableFuture<T> delegate) {
+    public Asyncable {
         if (delegate == null) {
             throw new MissingAsyncException("Cannot be null");
         }
-        this.delegate = delegate;
     }
 
     @Override
@@ -50,5 +51,21 @@ public final class AsyncT<T> extends CompletableFuture<T> implements Future<T>, 
         } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public <R> Asyncable<R> then(Function<? super T, ? extends R> mapper) {
+        return new Asyncable<>(delegate.thenApply(mapper));
+    }
+
+    public Asyncable<Void> finish(Consumer<? super T> action) {
+        return new Asyncable<>(delegate.thenAccept(action));
+    }
+
+    public Asyncable<T> error(Function<Throwable, ? extends T> errorHandler) {
+        return new Asyncable<>(delegate.exceptionally(errorHandler));
+    }
+
+    public CompletableFuture<T> getDelegate() {
+        return delegate;
     }
 }

@@ -1,12 +1,15 @@
 package com.arco2121.jasync.AsyncTypes;
 
-import com.arco2121.jasync.Async.AsyncT;
-import com.arco2121.jasync.Async.MissingAsyncException;
-import com.arco2121.jasync.Async.AsyncInterface;
+import com.arco2121.jasync.JAsync.Asyncable;
 
+import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 public final class VirtualAsync implements AsyncInterface {
+
     private static final ExecutorService EXEC;
     static {
         ExecutorService tmp;
@@ -21,11 +24,11 @@ public final class VirtualAsync implements AsyncInterface {
     }
 
     @Override
-    public <T> AsyncT<T> async(Callable<T> task) {
-        return (AsyncT<T>) EXEC.submit(task);
+    public <T> Asyncable<T> async(Callable<T> task) {
+        return (Asyncable<T>) EXEC.submit(task);
     }
     @Override
-    public <T> T await(AsyncT<T> future) {
+    public <T> T await(Asyncable<T> future) {
         try {
             return future.get(); // cheap block
         } catch (InterruptedException e) {
@@ -36,7 +39,7 @@ public final class VirtualAsync implements AsyncInterface {
         }
     }
     @Override
-    public <T> T await(AsyncT<T> task, int timeout) {
+    public <T> T await(Asyncable<T> task, int timeout) {
         try {
             return task.get(timeout, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
@@ -48,5 +51,69 @@ public final class VirtualAsync implements AsyncInterface {
             System.err.println("Timeout task: " + e.getMessage());
             return null;
         }
+    }
+
+    @Override
+    public <T> Asyncable<List<T>> awaitSafeAll(Asyncable<T>... tasks) {
+        CompletableFuture<T>[] futures = Arrays.stream(tasks).map(Asyncable::getDelegate).toArray(CompletableFuture[]::new);
+        CompletableFuture<List<T>> combined = CompletableFuture.allOf(futures).thenApply(v -> Arrays.stream(tasks).map(t -> t.getDelegate().join()).collect(Collectors.toList()));
+        return new Asyncable<>(combined);
+    }
+
+    @Override
+    public <T> Asyncable<T> awaitSafeRace(Asyncable<T>... tasks) {
+        CompletableFuture<T>[] futures = Arrays.stream(tasks).map(Asyncable::getDelegate).toArray(CompletableFuture[]::new);
+        return new Asyncable<>((CompletableFuture<T>) CompletableFuture.anyOf(futures));
+    }
+
+    @Override
+    public <T> Asyncable<T> awaitSafeAny(Asyncable<T>... tasks) {
+        CompletableFuture<T> firstSuccess = new CompletableFuture<>();
+        AtomicInteger failureCount = new AtomicInteger(0);
+        for (Asyncable<T> t : tasks) {
+            t.getDelegate().handle((res, ex) -> {
+                if (ex == null) {
+                    firstSuccess.complete(res);
+                } else {
+                    if (failureCount.incrementAndGet() == tasks.length) {
+                        firstSuccess.completeExceptionally(new RuntimeException("All tasks failed"));
+                    }
+                }
+                return null;
+            });
+        }
+        return new Asyncable<>(firstSuccess);
+    }
+
+    @Override
+    public Asyncable<List<?>> awaitAll(Asyncable<?>... tasks) {
+        CompletableFuture<?>[] futures = Arrays.stream(tasks).map(Asyncable::getDelegate).toArray(CompletableFuture[]::new);
+        CompletableFuture<List<?>> combined = CompletableFuture.allOf(futures).thenApply(v -> Arrays.stream(tasks).map(t -> t.getDelegate().join()).collect(Collectors.toList()));
+        return new Asyncable<>(combined);
+    }
+
+    @Override
+    public Asyncable<?> awaitRace(Asyncable<?>... tasks) {
+        CompletableFuture<?>[] futures = Arrays.stream(tasks).map(Asyncable::getDelegate).toArray(CompletableFuture[]::new);
+        return new Asyncable<>(CompletableFuture.anyOf(futures));
+    }
+
+    @Override
+    public Asyncable<?> awaitAny(Asyncable<?>... tasks) {
+        CompletableFuture<Object> firstSuccess = new CompletableFuture<>();
+        AtomicInteger failureCount = new AtomicInteger(0);
+        for (Asyncable<?> t : tasks) {
+            t.getDelegate().handle((res, ex) -> {
+                if (ex == null) {
+                    firstSuccess.complete(res);
+                } else {
+                    if (failureCount.incrementAndGet() == tasks.length) {
+                        firstSuccess.completeExceptionally(new RuntimeException("All tasks failed"));
+                    }
+                }
+                return null;
+            });
+        }
+        return new Asyncable<>(firstSuccess);
     }
 }
