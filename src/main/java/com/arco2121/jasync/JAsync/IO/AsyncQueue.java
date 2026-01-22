@@ -4,6 +4,7 @@ import com.arco2121.jasync.Types.Interfaces.AsyncCollection;
 import com.arco2121.jasync.JAsync.Async;
 import com.arco2121.jasync.JAsync.Running.Asyncable;
 
+import java.util.Iterator;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.function.Consumer;
@@ -65,6 +66,11 @@ public final class AsyncQueue<T> implements AsyncCollection {
             }
             return list;
         });
+    }
+
+    @Override
+    public Iterator<?> asyncIterator() {
+        return queue.iterator();
     }
 
     public void forEach(Consumer<T> action) {

@@ -3,6 +3,7 @@ package com.arco2121.jasync.JAsync.Collections;
 import com.arco2121.jasync.Types.Interfaces.AsyncCollection;
 import com.arco2121.jasync.JAsync.Async;
 import com.arco2121.jasync.JAsync.Running.Asyncable;
+import com.arco2121.jasync.Types.Interfaces.JSONable;
 
 import java.io.Serial;
 import java.io.Serializable;
@@ -12,7 +13,7 @@ import java.util.stream.Stream;
 
 import static com.arco2121.jasync.JAsync.Async.timeout;
 
-public class AsyncArray extends AbstractList<Object> implements RandomAccess, Serializable, Cloneable, AsyncCollection {
+public class AsyncArray extends AbstractList<Object> implements RandomAccess, JSONable, Cloneable, AsyncCollection {
 
     @Serial
     private static final long serialVersionUID = 1L;
@@ -76,6 +77,11 @@ public class AsyncArray extends AbstractList<Object> implements RandomAccess, Se
             }
             return new ArrayList<>(storage);
         });
+    }
+
+    @Override
+    public Iterator<?> asyncIterator() {
+        return storage.iterator();
     }
 
     @Override

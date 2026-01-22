@@ -2,8 +2,12 @@ package com.arco2121.jasync.JAsync.IO;
 
 import com.arco2121.jasync.JAsync.*;
 import com.arco2121.jasync.JAsync.Collections.AsyncList;
+import com.arco2121.jasync.JAsync.Collections.JSON;
 import com.arco2121.jasync.JAsync.Running.Asyncable;
+import com.arco2121.jasync.Types.Exceptions.CannotDeconstructJSONableException;
 import com.arco2121.jasync.Types.Exceptions.InvalidResourceException;
+import com.arco2121.jasync.Types.Exceptions.NotJSONableException;
+import com.arco2121.jasync.Types.Interfaces.JSONable;
 
 import java.io.*;
 import java.net.*;
@@ -127,6 +131,14 @@ public final class AsyncIO {
         }
     }
 
+    private static String renderJSON(JSONable obj) throws NotJSONableException {
+        try {
+            return obj.toJSON();
+        } catch (Exception e) {
+            throw new NotJSONableException("Not a JSONable object");
+        }
+    }
+
     public static Asyncable<Object> fetch(Resource source) {
         return Async.async(() -> {
             try (InputStream is = getStream(source); ObjectInputStream out = new ObjectInputStream(is)) {
@@ -174,6 +186,31 @@ public final class AsyncIO {
                 e.printStackTrace();
             }
             return null;
+        });
+    }
+
+    public static Asyncable<JSON> fetchJSON(Resource source) throws CannotDeconstructJSONableException {
+        return Async.async(() -> {
+            try (Stream<String> lines = getText(source)) {
+                StringBuilder temp = new StringBuilder();
+                lines.forEach(temp::append);
+                String obj = temp.toString();
+                return JSON.fromJSON(obj);
+            } catch (Exception e) {
+                throw new CannotDeconstructJSONableException("Cannot derive from JSON");
+            }
+        });
+    }
+    public static <T> Asyncable<T> fetchJSON(Resource source, Class<T> classTo) throws CannotDeconstructJSONableException {
+        return Async.async(() -> {
+            try (Stream<String> lines = getText(source)) {
+                StringBuilder temp = new StringBuilder();
+                lines.forEach(temp::append);
+                String obj = temp.toString();
+                return JSONable.fromJSON(obj, classTo);
+            } catch (Exception e) {
+                throw new CannotDeconstructJSONableException("Cannot derive from JSON");
+            }
         });
     }
 
@@ -264,6 +301,23 @@ public final class AsyncIO {
         });
     }
 
+    public static void sendJSON(Resource destination, Object data) throws NotJSONableException {
+        Object res = destination.source;
+        Async.async(() -> {
+            if (res instanceof URI uri && data instanceof JSONable jas) {
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(uri)
+                        .header("Content-Type", "application/json")
+                        .method(String.valueOf(destination.method), HttpRequest.BodyPublishers.ofString(renderJSON(jas)))
+                        .build();
+                CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+            }
+            else
+                send(destination, data);
+            return null;
+        });
+    }
+
     public final static class Input {
 
         public static Asyncable<String> asyncIn() {
@@ -287,5 +341,4 @@ public final class AsyncIO {
             });
         }
     }
-
 }
