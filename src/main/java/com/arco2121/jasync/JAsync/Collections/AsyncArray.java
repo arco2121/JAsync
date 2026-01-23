@@ -3,10 +3,9 @@ package com.arco2121.jasync.JAsync.Collections;
 import com.arco2121.jasync.Types.Interfaces.AsyncCollection;
 import com.arco2121.jasync.JAsync.Async;
 import com.arco2121.jasync.JAsync.Running.Asyncable;
-import com.arco2121.jasync.Types.Interfaces.JSONable;
+import com.arco2121.jasync.Types.Interfaces.ObjectNotations.JSONable;
 
 import java.io.Serial;
-import java.io.Serializable;
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Stream;
