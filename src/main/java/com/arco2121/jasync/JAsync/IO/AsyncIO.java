@@ -3,11 +3,13 @@ package com.arco2121.jasync.JAsync.IO;
 import com.arco2121.jasync.JAsync.*;
 import com.arco2121.jasync.JAsync.Collections.AsyncList;
 import com.arco2121.jasync.JAsync.Collections.JSON;
+import com.arco2121.jasync.JAsync.Collections.TOON;
 import com.arco2121.jasync.JAsync.Running.Asyncable;
 import com.arco2121.jasync.Types.Exceptions.CannotDeconstructONException;
 import com.arco2121.jasync.Types.Exceptions.InvalidResourceException;
 import com.arco2121.jasync.Types.Exceptions.NotONException;
 import com.arco2121.jasync.Types.Interfaces.ObjectNotations.JSONable;
+import com.arco2121.jasync.Types.Interfaces.ObjectNotations.TOONable;
 
 import java.io.*;
 import java.net.*;
@@ -131,192 +133,10 @@ public final class AsyncIO {
         }
     }
 
-    private static String renderJSON(JSONable obj) throws NotONException {
-        try {
-            return obj.toNotation();
-        } catch (Exception e) {
-            throw new NotONException("Not a JSONable object");
-        }
-    }
-
-    public static Asyncable<Object> fetch(Resource source) {
-        return Async.async(() -> {
-            try (InputStream is = getStream(source); ObjectInputStream out = new ObjectInputStream(is)) {
-                return out.readObject();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-            return null;
-        });
-    }
-    public static <T> Asyncable<T> fetch(Resource source, Function<Object, T> change) throws ClassCastException {
-        return Async.async(() -> {
-            try (InputStream is = getStream(source); ObjectInputStream out = new ObjectInputStream(is)) {
-                return change.apply(out.readObject());
-            } catch (ClassCastException e) {
-                throw new ClassCastException("Class not found: " + source.getClass().getName());
-            }
-        });
-    }
-
-    public static Asyncable<String> fetchText(Resource source) {
-        return Async.async(() -> {
-            try (Stream<String> lines = getText(source)) {
-                StringBuilder temp = new StringBuilder();
-                lines.forEach(temp::append);
-                return temp.toString();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-            return null;
-        });
-    }
-    public static Asyncable<String> fetchText(Resource source, char lineSeparator) {
-        return Async.async(() -> {
-            try (Stream<String> lines = getText(source)) {
-                StringBuilder temp = new StringBuilder();
-                lines.forEach(line -> {
-                    temp.append(line);
-                    temp.append("%");
-                    temp.append(lineSeparator);
-                    temp.append("%");
-                });
-                return temp.toString();
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-            return null;
-        });
-    }
-
-    public static Asyncable<JSON> fetchJSON(Resource source) throws CannotDeconstructONException {
-        return Async.async(() -> {
-            try (Stream<String> lines = getText(source)) {
-                StringBuilder temp = new StringBuilder();
-                lines.forEach(temp::append);
-                String obj = temp.toString();
-                return JSON.fromNotation(obj);
-            } catch (Exception e) {
-                throw new CannotDeconstructONException("Cannot derive from JSON");
-            }
-        });
-    }
-
-    public static <T> Asyncable<T> fetchFromJSON(Resource source, Class<T> classTo) throws CannotDeconstructONException {
-        return Async.async(() -> {
-            try (Stream<String> lines = getText(source)) {
-                StringBuilder temp = new StringBuilder();
-                lines.forEach(temp::append);
-                String obj = temp.toString();
-                return JSONable.fromNotation(obj, classTo);
-            } catch (Exception e) {
-                throw new CannotDeconstructONException("Cannot derive from JSON");
-            }
-        });
-    }
-
-    public static <T> AsyncQueue<T> fetchBinaries(Resource source, Function<Object, T> change) throws ClassCastException {
-        AsyncQueue<T> queue = new AsyncQueue<>();
-        Async.await(() -> {
-            try (InputStream is = getStream(source);
-                 ObjectInputStream ois = new ObjectInputStream(is)) {
-                while (true) {
-                    try {
-                        queue.add((T) ois.readObject());
-                    } catch (EOFException e) { break; }
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
-            } finally {
-                queue.close();
-            }
-            return null;
-        });
-        return queue;
-    }
-
-    public static <T> AsyncQueue<T> fetchLines(Resource source, Function<String, T> transformation) throws ClassCastException {
-        AsyncQueue<T> queue = new AsyncQueue<>();
-        Async.await(() -> {
-            try (Stream<String> lines = getText(source)) {
-                lines.forEach(line -> {
-                    T obj = transformation.apply(line);
-                    if (obj != null) queue.add(obj);
-                });
-            } catch (Exception e) {
-                e.printStackTrace();
-            } finally {
-                queue.close();
-            }
-            return null;
-        });
-        return queue;
-    }
-
     public static <T> AsyncList<T> memorize(AsyncQueue<T> queue) {
         AsyncList<T> result = new AsyncList<>();
         queue.forEach(result::add);
         return result;
-    }
-
-    public static void send(Resource destination, Object data) {
-        Object res = destination.source;
-        Async.async(() -> {
-            if (res instanceof URI uri) {
-                byte[] serialized = serialize(data);
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(uri)
-                        .header("Content-Type", "application/x-java-serialized-object")
-                        .method(String.valueOf(destination.method), HttpRequest.BodyPublishers.ofByteArray(serialized))
-                        .build();
-                CLIENT.send(request, HttpResponse.BodyHandlers.discarding());
-            }
-            else if (res instanceof DatagramSocket socket) {
-                byte[] bytes = serialize(data);
-                DatagramPacket packet = new DatagramPacket(bytes, bytes.length, socket.getInetAddress(), socket.getPort());
-                socket.send(packet);
-            }
-            else {
-                try (OutputStream os = pushSteam(destination); ObjectOutputStream out = new ObjectOutputStream(os)) {
-                    out.writeObject(data);
-                }
-            }
-            return null;
-        });
-    }
-
-    public static void sendText(Resource destination, String data) {
-        Object res = destination.source;
-        Async.async(() -> {
-            if (res instanceof URI uri) {
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(uri)
-                        .header("Content-Type", "text/plain")
-                        .method(String.valueOf(destination.method), HttpRequest.BodyPublishers.ofString(data))
-                        .build();
-                CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
-            }
-            else
-                send(destination, data);
-            return null;
-        });
-    }
-
-    public static void sendJSON(Resource destination, Object data) throws NotONException {
-        Object res = destination.source;
-        Async.async(() -> {
-            if (res instanceof URI uri && data instanceof JSONable jas) {
-                HttpRequest request = HttpRequest.newBuilder()
-                        .uri(uri)
-                        .header("Content-Type", "application/json")
-                        .method(String.valueOf(destination.method), HttpRequest.BodyPublishers.ofString(renderJSON(jas)))
-                        .build();
-                CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
-            }
-            else
-                send(destination, data);
-            return null;
-        });
     }
 
     public final static class Input {
@@ -331,6 +151,133 @@ public final class AsyncIO {
         public static String awaitIn() {
             return Async.await(() -> scanner.nextLine());
         }
+
+        public static Asyncable<Object> fetch(Resource source) {
+            return Async.async(() -> {
+                try (InputStream is = getStream(source); ObjectInputStream out = new ObjectInputStream(is)) {
+                    return out.readObject();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+                return null;
+            });
+        }
+        public static <T> Asyncable<T> fetch(Resource source, Function<Object, T> change) throws ClassCastException {
+            return Async.async(() -> {
+                try (InputStream is = getStream(source); ObjectInputStream out = new ObjectInputStream(is)) {
+                    return change.apply(out.readObject());
+                } catch (ClassCastException e) {
+                    throw new ClassCastException("Class not found: " + source.getClass().getName());
+                }
+            });
+        }
+
+        public static Asyncable<String> fetchText(Resource source) {
+            return Async.async(() -> {
+                try (Stream<String> lines = getText(source)) {
+                    StringBuilder temp = new StringBuilder();
+                    lines.forEach(temp::append);
+                    return temp.toString();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+                return null;
+            });
+        }
+        public static Asyncable<String> fetchText(Resource source, char lineSeparator) {
+            return Async.async(() -> {
+                try (Stream<String> lines = getText(source)) {
+                    StringBuilder temp = new StringBuilder();
+                    lines.forEach(line -> {
+                        temp.append(line);
+                        temp.append("%");
+                        temp.append(lineSeparator);
+                        temp.append("%");
+                    });
+                    return temp.toString();
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+                return null;
+            });
+        }
+
+        public static Asyncable<JSON> fetchJSON(Resource source) throws CannotDeconstructONException {
+            return Async.async(() -> {
+                try (Stream<String> lines = getText(source)) {
+                    StringBuilder temp = new StringBuilder();
+                    lines.forEach(temp::append);
+                    String obj = temp.toString();
+                    return JSON.fromNotation(obj);
+                } catch (Exception e) {
+                    throw new CannotDeconstructONException("Cannot derive from JSON");
+                }
+            });
+        }
+
+        public static Asyncable<TOON> fetchTOON(Resource source) throws CannotDeconstructONException {
+            return Async.async(() -> {
+                try (Stream<String> lines = getText(source)) {
+                    StringBuilder temp = new StringBuilder();
+                    lines.forEach(temp::append);
+                    String obj = temp.toString();
+                    return TOON.fromNotation(obj);
+                } catch (Exception e) {
+                    throw new CannotDeconstructONException("Cannot derive from JSON");
+                }
+            });
+        }
+
+        public static <T> Asyncable<T> fetchFromJSON(Resource source, Class<T> classTo) throws CannotDeconstructONException {
+            return Async.async(() -> {
+                try (Stream<String> lines = getText(source)) {
+                    StringBuilder temp = new StringBuilder();
+                    lines.forEach(temp::append);
+                    String obj = temp.toString();
+                    return JSONable.fromNotation(obj, classTo);
+                } catch (Exception e) {
+                    throw new CannotDeconstructONException("Cannot derive from JSON");
+                }
+            });
+        }
+
+        public static <T> AsyncQueue<T> fetchBinaries(Resource source, Function<Object, T> change) throws ClassCastException {
+            AsyncQueue<T> queue = new AsyncQueue<>();
+            Async.await(() -> {
+                try (InputStream is = getStream(source);
+                     ObjectInputStream ois = new ObjectInputStream(is)) {
+                    while (true) {
+                        try {
+                            queue.add((T) ois.readObject());
+                        } catch (EOFException e) { break; }
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                } finally {
+                    queue.close();
+                }
+                return null;
+            });
+            return queue;
+        }
+
+        public static <T> AsyncQueue<T> fetchLines(Resource source, Function<String, T> transformation) throws ClassCastException {
+            AsyncQueue<T> queue = new AsyncQueue<>();
+            Async.await(() -> {
+                try (Stream<String> lines = getText(source)) {
+                    lines.forEach(line -> {
+                        T obj = transformation.apply(line);
+                        if (obj != null) queue.add(obj);
+                    });
+                } catch (Exception e) {
+                    e.printStackTrace();
+                } finally {
+                    queue.close();
+                }
+                return null;
+            });
+            return queue;
+        }
     }
 
     public final static class Output {
@@ -339,6 +286,83 @@ public final class AsyncIO {
             return Async.async(() -> {
                 Async.timeout(timeout);
                 System.out.println(data);
+            });
+        }
+
+        public static void send(Resource destination, Object data) {
+            Object res = destination.source;
+            Async.async(() -> {
+                if (res instanceof URI uri) {
+                    byte[] serialized = serialize(data);
+                    HttpRequest request = HttpRequest.newBuilder()
+                            .uri(uri)
+                            .header("Content-Type", "application/x-java-serialized-object")
+                            .method(String.valueOf(destination.method), HttpRequest.BodyPublishers.ofByteArray(serialized))
+                            .build();
+                    CLIENT.send(request, HttpResponse.BodyHandlers.discarding());
+                }
+                else if (res instanceof DatagramSocket socket) {
+                    byte[] bytes = serialize(data);
+                    DatagramPacket packet = new DatagramPacket(bytes, bytes.length, socket.getInetAddress(), socket.getPort());
+                    socket.send(packet);
+                }
+                else {
+                    try (OutputStream os = pushSteam(destination); ObjectOutputStream out = new ObjectOutputStream(os)) {
+                        out.writeObject(data);
+                    }
+                }
+                return null;
+            });
+        }
+
+        public static void sendText(Resource destination, String data) {
+            Object res = destination.source;
+            Async.async(() -> {
+                if (res instanceof URI uri) {
+                    HttpRequest request = HttpRequest.newBuilder()
+                            .uri(uri)
+                            .header("Content-Type", "text/plain")
+                            .method(String.valueOf(destination.method), HttpRequest.BodyPublishers.ofString(data))
+                            .build();
+                    CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+                }
+                else
+                    send(destination, data);
+                return null;
+            });
+        }
+
+        public static void sendJSON(Resource destination, Object data) throws NotONException {
+            Object res = destination.source;
+            Async.async(() -> {
+                if (res instanceof URI uri && data instanceof JSONable jas) {
+                    HttpRequest request = HttpRequest.newBuilder()
+                            .uri(uri)
+                            .header("Content-Type", "application/json")
+                            .method(String.valueOf(destination.method), HttpRequest.BodyPublishers.ofString(jas.toNotation()))
+                            .build();
+                    CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+                }
+                else
+                    send(destination, data);
+                return null;
+            });
+        }
+
+        public static void sendTOON(Resource destination, Object data) throws NotONException {
+            Object res = destination.source;
+            Async.async(() -> {
+                if (res instanceof URI uri && data instanceof TOONable jas) {
+                    HttpRequest request = HttpRequest.newBuilder()
+                            .uri(uri)
+                            .header("Content-Type", "application/toon")
+                            .method(String.valueOf(destination.method), HttpRequest.BodyPublishers.ofString(jas.toNotation()))
+                            .build();
+                    CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+                }
+                else
+                    send(destination, data);
+                return null;
             });
         }
     }
