@@ -16,6 +16,8 @@ A modern, async/await library for Java that brings JavaScript/Python-style async
 
 ## Installation
 
+NOTE: If you dont understand how to import the library or dont have credentials, use https://jitpack.io/
+
 ### Gradle (Kotlin DSL)
 
 ```kotlin
